@@ -1,0 +1,211 @@
+<!-- 重点参数：changeNavgContent -->
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <!-- 原始地址：//webapi.amap.com/ui/1.0/ui/misc/PathSimplifier/examples/chang-navg-content.html -->
+    <base href="//webapi.amap.com/ui/1.0/ui/misc/PathSimplifier/examples/" />
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>动态修改巡航器</title>
+    <link rel="stylesheet" href="http://cache.amap.com/lbs/static/main1119.css"/>
+    <style>
+        html,
+        body,
+        #container {
+            width: 100%;
+            height: 100%;
+            margin: 0px;
+        }
+
+        #loadingTip {
+            position: absolute;
+            z-index: 9999;
+            top: 0;
+            left: 0;
+            padding: 3px 10px;
+            background: red;
+            color: #fff;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+<div id="container"></div>
+<div id="tip">
+    温度:<span id="temperature"></span>
+    <br>湿度:<span id="humidity"></span>
+    <br>经度:<span id="longitude"></span>
+    <br>纬度:<span id="latitude"></span>
+    <br>加速度:<span id="acceleration"></span>
+    <br>倾角:<span id="obliquity"></span>
+    <br>角加速度:<span id="angularAcc"></span>
+</div>
+<script type="text/javascript" src='//webapi.amap.com/maps?v=1.4.3&key=a104d7bb363c285504490eaf66cd38bc'></script>
+<!-- UI组件库 1.0 -->
+<script type="text/javascript" src="http://cache.amap.com/lbs/static/addToolbar.js"></script>
+<!-- UI组件库 1.0 -->
+<script src="//webapi.amap.com/ui/1.0/main.js?v=1.0.11"></script>
+<!--jquery-->
+<script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
+<script type="text/javascript">
+    //创建地图
+    var map = new AMap.Map('container', {
+        resizeEnable: true,
+        zoom:20
+    });
+    // var content = [114.048353,22.542799];
+    var index = 0;
+    var mypath = [],
+        endIdx = 0,
+        data = [{
+            name: '我的自行车',
+            path: []
+        }];
+
+    // console.log(document.domain)
+    // map.setZoomAndCenter(18, content);
+
+
+
+
+    function initPage(PathSimplifier, $) {
+
+        var emptyLineStyle = {
+            lineWidth: 0,
+            fillStyle: null,
+            strokeStyle: null,
+            borderStyle: null
+        };
+
+        var pathSimplifierIns = new PathSimplifier({
+            zIndex: 100,
+            autoSetFitView: false,
+            map: map, //所属的地图实例
+
+            getPath: function(pathData, pathIndex) {
+                return pathData.path;
+            },
+            getHoverTitle: function(pathData, pathIndex, pointIndex) {
+
+                if (pointIndex >= 0) {
+                    //point
+                    return pathData.name + '，点：' + pointIndex + '/' + pathData.path.length;
+                }
+
+                return pathData.name + '，点数量' + pathData.path.length;
+            },
+            renderOptions: {
+
+                renderAllPointsIfNumberBelow: -1 //绘制路线节点，如不需要可设置为-1
+            }
+        });
+
+        window.pathSimplifierIns = pathSimplifierIns;
+
+
+        function onload() {
+            pathSimplifierIns.renderLater();
+        }
+
+        function onerror(e) {
+            alert('图片加载失败！');
+        }
+        function chargeMyPath(longitude,latitude) {
+            var xy = [longitude,longitude];
+            mypath.push(xy)
+            data[0].path =  mypath.slice(0, index+1);
+            map.setZoomAndCenter(20, xy);
+            pathSimplifierIns.setData(data);
+            index++;
+            //重新建立一个巡航器
+            var navg1 = pathSimplifierIns.createPathNavigator(0, {
+                //loop: true, //循环播放
+                speed: 600000 //巡航速度，单位千米/小时
+            });
+            navg1.start();
+            var cursor = navg1.getCursor().clone(), //保存巡航器的位置
+                status = navg1.getNaviStatus();
+        }
+
+
+        // setInterval(chargeMyPath, 1000);
+
+        function load() {
+            var websocket = null;
+
+            //判断当前浏览器是否支持WebSocket
+            if('WebSocket' in window){
+                websocket = new WebSocket("ws://"+location.hostname+":"+location.port+"/websocket");
+            }
+            else{
+                alert('Not support websocket')
+            }
+
+            //连接发生错误的回调方法
+            websocket.onerror = function(){
+                setMessageInnerHTML("error");
+            };
+
+            //连接成功建立的回调方法
+            websocket.onopen = function(event){
+                setMessageInnerHTML("open");
+            }
+
+            //接收到消息的回调方法
+            websocket.onmessage = function(event){
+                var data = JSON.parse(event.data);
+                console.log(data)
+                for (var key in data){
+                    console.log(key)
+                    $("#"+key).text(data[key]);
+                }
+                chargeMyPath(data.latitude,data.longitude)
+            }
+
+            //连接关闭的回调方法
+            websocket.onclose = function(){
+                setMessageInnerHTML("close");
+            }
+
+            //监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
+            window.onbeforeunload = function(){
+                websocket.close();
+            }
+
+            //将消息显示在网页上
+            function setMessageInnerHTML(data){
+                console.log(data)
+            }
+
+            //关闭连接
+            function closeWebSocket(){
+                websocket.close();
+            }
+
+            //发送消息
+            function send(){
+                var message = document.getElementById('text').value;
+                websocket.send(message);
+            }
+        }
+        load();
+    }
+
+    AMapUI.load(['ui/misc/PathSimplifier', 'lib/$'], function(PathSimplifier, $) {
+
+        if (!PathSimplifier.supportCanvas) {
+            alert('当前环境不支持 Canvas！');
+            return;
+        }
+
+        initPage(PathSimplifier, $);
+
+    });
+
+</script>
+</body>
+
+</html>
